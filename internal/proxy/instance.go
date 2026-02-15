@@ -43,6 +43,13 @@ func NewInstancePool(urls []string) *InstancePool {
 	return pool
 }
 
+// NewInstancePoolFromInstances 从实例列表创建实例池
+func NewInstancePoolFromInstances(instances []*Instance) *InstancePool {
+	return &InstancePool{
+		instances: instances,
+	}
+}
+
 // GetHealthyInstances 获取所有健康的实例
 func (p *InstancePool) GetHealthyInstances() []*Instance {
 	p.mu.RLock()
@@ -151,4 +158,12 @@ func (p *InstancePool) StartHealthCheck(interval time.Duration) {
 			p.HealthCheck()
 		}
 	}()
+}
+
+// ReplaceInstances 替换所有实例（用于热加载）
+func (p *InstancePool) ReplaceInstances(newInstances []*Instance) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	p.instances = newInstances
 }

@@ -38,6 +38,11 @@ logging:
   output: stdout  # stdout/file
   file: logs/proxy.log
 
+storage:
+  user_data_dir: ./data/users      # 用户数据根目录
+  shared_models_dir: ./data/models # 共享模型目录
+  max_user_storage_gb: 100         # 每个用户最大存储空间（GB）
+
 redis:
   addr: localhost:6379
   password: ""
@@ -46,7 +51,3 @@ redis:
 rate_limit:
   enabled: true
   requests_per_minute: 60
-
-billing:
-  cost_per_prompt: 0.10  # 每次生成 0.1 元
-  cost_per_minute: 0.05  # 每分钟 0.05 元

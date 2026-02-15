@@ -14,9 +14,9 @@ type Config struct {
 	ComfyInstances ComfyInstancesConfig `mapstructure:"comfy_instances"`
 	LoadBalancer   LoadBalancerConfig   `mapstructure:"loadbalancer"`
 	Logging        LoggingConfig        `mapstructure:"logging"`
+	Storage        StorageConfig        `mapstructure:"storage"`
 	Redis          RedisConfig          `mapstructure:"redis"`
 	RateLimit      RateLimitConfig      `mapstructure:"rate_limit"`
-	Billing        BillingConfig        `mapstructure:"billing"`
 }
 
 type ServerConfig struct {
@@ -59,6 +59,12 @@ type LoggingConfig struct {
 	File   string `mapstructure:"file"`
 }
 
+type StorageConfig struct {
+	UserDataDir       string  `mapstructure:"user_data_dir"`
+	SharedModelsDir   string  `mapstructure:"shared_models_dir"`
+	MaxUserStorageGB  float64 `mapstructure:"max_user_storage_gb"`
+}
+
 type RedisConfig struct {
 	Addr     string `mapstructure:"addr"`
 	Password string `mapstructure:"password"`
@@ -66,13 +72,8 @@ type RedisConfig struct {
 }
 
 type RateLimitConfig struct {
-	Enabled            bool `mapstructure:"enabled"`
-	RequestsPerMinute  int  `mapstructure:"requests_per_minute"`
-}
-
-type BillingConfig struct {
-	CostPerPrompt float64 `mapstructure:"cost_per_prompt"`
-	CostPerMinute float64 `mapstructure:"cost_per_minute"`
+	Enabled           bool `mapstructure:"enabled"`
+	RequestsPerMinute int  `mapstructure:"requests_per_minute"`
 }
 
 var AppConfig *Config
@@ -130,6 +131,11 @@ func setDefaults() {
 	viper.SetDefault("logging.output", "stdout")
 	viper.SetDefault("logging.file", "logs/proxy.log")
 
+	// Storage
+	viper.SetDefault("storage.user_data_dir", "./data/users")
+	viper.SetDefault("storage.shared_models_dir", "./data/models")
+	viper.SetDefault("storage.max_user_storage_gb", 100)
+
 	// Redis
 	viper.SetDefault("redis.addr", "localhost:6379")
 	viper.SetDefault("redis.password", "")
@@ -138,8 +144,4 @@ func setDefaults() {
 	// RateLimit
 	viper.SetDefault("rate_limit.enabled", true)
 	viper.SetDefault("rate_limit.requests_per_minute", 60)
-
-	// Billing
-	viper.SetDefault("billing.cost_per_prompt", 0.10)
-	viper.SetDefault("billing.cost_per_minute", 0.05)
 }

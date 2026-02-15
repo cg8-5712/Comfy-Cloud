@@ -102,5 +102,77 @@ func SeedAll() error {
 	if err := SeedDedicatedPricing(); err != nil {
 		return err
 	}
+	if err := SeedSystemConfig(); err != nil {
+		return err
+	}
+	if err := SeedComfyInstances(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// SeedSystemConfig 初始化系统配置
+func SeedSystemConfig() error {
+	var count int64
+	DB.Model(&models.SystemConfig{}).Count(&count)
+	if count > 0 {
+		log.Println("System configs already exist, skipping seed")
+		return nil
+	}
+
+	configs := []models.SystemConfig{
+		// 负载均衡配置
+		{Category: "loadbalancer", Key: "health_check_interval", Value: "10", ValueType: "int", Description: "健康检查间隔（秒）"},
+		{Category: "loadbalancer", Key: "queue_update_interval", Value: "2", ValueType: "int", Description: "队列状态更新间隔（秒）"},
+		{Category: "loadbalancer", Key: "max_queue_size", Value: "10", ValueType: "int", Description: "最大队列长度"},
+
+		// 存储配置
+		{Category: "storage", Key: "user_data_dir", Value: "./data/users", ValueType: "string", Description: "用户数据根目录"},
+		{Category: "storage", Key: "shared_models_dir", Value: "./data/models", ValueType: "string", Description: "共享模型目录"},
+		{Category: "storage", Key: "max_user_storage_gb", Value: "100", ValueType: "float", Description: "每个用户最大存储空间（GB）"},
+
+		// 限流配置
+		{Category: "rate_limit", Key: "enabled", Value: "true", ValueType: "bool", Description: "是否启用限流"},
+		{Category: "rate_limit", Key: "requests_per_minute", Value: "60", ValueType: "int", Description: "每分钟最大请求数"},
+
+		// 日志配置
+		{Category: "logging", Key: "level", Value: "info", ValueType: "string", Description: "日志级别（debug/info/warn/error）"},
+	}
+
+	for _, cfg := range configs {
+		if err := DB.Create(&cfg).Error; err != nil {
+			return err
+		}
+	}
+
+	log.Println("System configs created successfully")
+	return nil
+}
+
+// SeedComfyInstances 初始化 ComfyUI 实例配置
+func SeedComfyInstances() error {
+	var count int64
+	DB.Model(&models.ComfyInstance{}).Count(&count)
+	if count > 0 {
+		log.Println("ComfyUI instances already exist, skipping seed")
+		return nil
+	}
+
+	instances := []models.ComfyInstance{
+		{Name: "comfyui-1", URL: "http://localhost:8188", GPUID: 0, Pool: "shared", Status: "active", MaxQueue: 10},
+		{Name: "comfyui-2", URL: "http://localhost:8189", GPUID: 1, Pool: "shared", Status: "active", MaxQueue: 10},
+		{Name: "comfyui-3", URL: "http://localhost:8190", GPUID: 2, Pool: "shared", Status: "active", MaxQueue: 10},
+		{Name: "comfyui-4", URL: "http://localhost:8191", GPUID: 3, Pool: "shared", Status: "active", MaxQueue: 10},
+		{Name: "comfyui-5", URL: "http://localhost:8192", GPUID: 4, Pool: "shared", Status: "active", MaxQueue: 10},
+		{Name: "comfyui-6", URL: "http://localhost:8193", GPUID: 5, Pool: "shared", Status: "active", MaxQueue: 10},
+	}
+
+	for _, inst := range instances {
+		if err := DB.Create(&inst).Error; err != nil {
+			return err
+		}
+	}
+
+	log.Println("ComfyUI instances created successfully")
 	return nil
 }

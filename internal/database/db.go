@@ -65,6 +65,8 @@ func AutoMigrate() error {
 		&models.BillingConfig{},
 		&models.DedicatedPricing{},
 		&models.DedicatedInstance{},
+		&models.SystemConfig{},
+		&models.ComfyInstance{},
 	)
 }
 
