@@ -1,0 +1,108 @@
+package main
+
+import (
+	"fmt"
+	"log"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"github.com/gin-gonic/gin"
+
+	"comfy-cloud/internal/auth"
+	"comfy-cloud/internal/config"
+	"comfy-cloud/internal/database"
+	"comfy-cloud/internal/handler"
+	"comfy-cloud/internal/repository"
+	"comfy-cloud/internal/service"
+	"comfy-cloud/pkg/logger"
+)
+
+func main() {
+	// 加载配置
+	cfg := config.Load()
+	log.Println("Configuration loaded successfully")
+
+	// 初始化日志
+	if err := logger.Init(cfg.Logging.Level, cfg.Logging.Output, cfg.Logging.File); err != nil {
+		log.Fatalf("Failed to initialize logger: %v", err)
+	}
+	defer logger.Sync()
+	log.Println("Logger initialized successfully")
+
+	// 初始化 JWT
+	auth.InitJWT(cfg.JWT.Secret)
+	log.Println("JWT initialized successfully")
+
+	// 连接数据库
+	dbConfig := database.Config{
+		Host:     cfg.Database.Host,
+		Port:     cfg.Database.Port,
+		User:     cfg.Database.User,
+		Password: cfg.Database.Password,
+		DBName:   cfg.Database.DBName,
+		SSLMode:  cfg.Database.SSLMode,
+	}
+
+	if err := database.Connect(dbConfig); err != nil {
+		log.Fatalf("Failed to connect to database: %v", err)
+	}
+	defer database.Close()
+	log.Println("Database connected successfully")
+
+	// 运行数据库迁移
+	if err := database.AutoMigrate(); err != nil {
+		log.Fatalf("Failed to run database migrations: %v", err)
+	}
+	log.Println("Database migrations completed successfully")
+
+	// 初始化默认数据
+	if err := database.SeedAll(); err != nil {
+		log.Fatalf("Failed to seed database: %v", err)
+	}
+	log.Println("Database seeding completed successfully")
+
+	// 初始化 Repository 层
+	userRepo := repository.NewUserRepository(database.DB)
+
+	// 初始化 Service 层
+	authService := service.NewAuthService(userRepo, cfg)
+
+	// 初始化 Handler 层
+	authHandler := handler.NewAuthHandler(authService)
+
+	// 设置 Gin 模式
+	gin.SetMode(cfg.Server.Mode)
+
+	// 创建 Gin 引擎
+	r := gin.Default()
+
+	// 健康检查
+	r.GET("/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{
+			"status":  "ok",
+			"service": "comfy-cloud-proxy",
+		})
+	})
+
+	// 设置路由
+	authHandler.SetupRoutes(r)
+
+	// 启动服务器
+	addr := fmt.Sprintf(":%d", cfg.Server.Port)
+	log.Printf("Starting server on %s", addr)
+
+	// 优雅关闭
+	go func() {
+		if err := r.Run(addr); err != nil {
+			log.Fatalf("Failed to start server: %v", err)
+		}
+	}()
+
+	// 等待中断信号
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	log.Println("Shutting down server...")
+}

@@ -1,0 +1,43 @@
+server:
+  port: 3000
+  mode: release  # debug/release
+
+database:
+  host: localhost
+  port: 5432
+  user: comfy
+  password: comfy123
+  dbname: comfy_cloud
+  sslmode: disable  # disable/require
+
+jwt:
+  secret: "your-jwt-secret-key-change-in-production"
+  expiration: 24h
+
+comfy_instances:
+  - url: http://localhost:8188
+  # - url: http://comfyui-2:8188
+  # - url: http://comfyui-3:8188
+
+loadbalancer:
+  health_check_interval: 5s
+  queue_update_interval: 2s
+  max_queue_size: 10  # 超过则拒绝请求
+
+logging:
+  level: info  # debug/info/warn/error
+  output: stdout  # stdout/file
+  file: logs/proxy.log
+
+redis:
+  addr: localhost:6379
+  password: ""
+  db: 0
+
+rate_limit:
+  enabled: true
+  requests_per_minute: 60
+
+billing:
+  cost_per_prompt: 0.10  # 每次生成 0.1 元
+  cost_per_minute: 0.05  # 每分钟 0.05 元

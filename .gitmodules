@@ -1,0 +1,6 @@
+[submodule "comfy"]
+	path = comfy
+	url = https://github.com/cg8-5712/ComfyUI
+[submodule "comfy-frontend"]
+	path = comfy-frontend
+	url = https://github.com/cg8-5712/ComfyUI_frontend.git
