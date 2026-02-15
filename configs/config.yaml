@@ -15,14 +15,23 @@ jwt:
   expiration: 24h
 
 comfy_instances:
-  - url: http://localhost:8188
-  # - url: http://comfyui-2:8188
-  # - url: http://comfyui-3:8188
+  # 共享池实例（用于排队模式）
+  shared:
+    - url: http://localhost:8188
+    - url: http://localhost:8189
+    - url: http://localhost:8190
+    - url: http://localhost:8191
+    - url: http://localhost:8192
+    - url: http://localhost:8193
+  # 独占池实例（预留给独占模式用户）
+  # dedicated:
+  #   - url: http://localhost:8194
+  #   - url: http://localhost:8195
 
 loadbalancer:
-  health_check_interval: 5s
-  queue_update_interval: 2s
-  max_queue_size: 10  # 超过则拒绝请求
+  health_check_interval: 10s  # 健康检查间隔
+  queue_update_interval: 2s   # 队列状态更新间隔
+  max_queue_size: 10          # 最大队列长度
 
 logging:
   level: info  # debug/info/warn/error

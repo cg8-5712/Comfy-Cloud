@@ -13,6 +13,7 @@ import (
 	"comfy-cloud/internal/config"
 	"comfy-cloud/internal/database"
 	"comfy-cloud/internal/handler"
+	"comfy-cloud/internal/proxy"
 	"comfy-cloud/internal/repository"
 	"comfy-cloud/internal/service"
 	"comfy-cloud/pkg/logger"
@@ -71,6 +72,22 @@ func main() {
 	// 初始化 Handler 层
 	authHandler := handler.NewAuthHandler(authService)
 
+	// 初始化 ComfyUI 实例池
+	sharedURLs := make([]string, 0)
+	for _, inst := range cfg.ComfyInstances.Shared {
+		sharedURLs = append(sharedURLs, inst.URL)
+	}
+	instancePool := proxy.NewInstancePool(sharedURLs)
+	log.Printf("Initialized instance pool with %d instances", len(sharedURLs))
+
+	// 启动健康检查
+	instancePool.StartHealthCheck(cfg.LoadBalancer.HealthCheckInterval)
+	log.Println("Health check started")
+
+	// 初始化代理处理器
+	proxyHandler := proxy.NewProxyHandler(instancePool, database.DB)
+	log.Println("Proxy handler initialized")
+
 	// 设置 Gin 模式
 	gin.SetMode(cfg.Server.Mode)
 
@@ -87,6 +104,18 @@ func main() {
 
 	// 设置路由
 	authHandler.SetupRoutes(r)
+
+	// 代理路由（所有 /comfy/* 请求）
+	r.Any("/comfy/*path", proxyHandler.Route)
+	r.Any("/comfy", proxyHandler.Route)
+
+	// 实例状态查询
+	r.GET("/api/instances", func(c *gin.Context) {
+		instances := instancePool.GetAllInstances()
+		c.JSON(200, gin.H{
+			"instances": instances,
+		})
+	})
 
 	// 启动服务器
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)

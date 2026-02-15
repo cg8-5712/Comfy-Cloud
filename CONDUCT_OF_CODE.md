@@ -4,20 +4,21 @@
 
 ### Phase 0: 数据库设计和基础架构
 - [x] 标准 Go 项目结构（handler/service/repository）
-- [x] 数据库模型（User, Subscription, UsageRecord, ModelPermission）
+- [x] 数据库模型（User, Subscription, UsageRecord, ModelPermission, BillingConfig, DedicatedPricing, DedicatedInstance）
 - [x] 用户认证（注册/登录/JWT）
 - [x] 配置管理（Viper）
 - [x] 日志系统（Zap）
 - [x] 计费服务（按 billing.md 实现）
 - [x] 使用记录仓储
 
-## 待开发
-
 ### Phase 1: 反向代理基础
-- [ ] 实现反向代理中间件（httputil.ReverseProxy）
-- [ ] 配置 ComfyUI 实例池
-- [ ] 简单的轮询负载均衡
-- [ ] 健康检查
+- [x] 实现反向代理中间件（httputil.ReverseProxy）
+- [x] 配置 ComfyUI 实例池
+- [x] 简单的负载均衡（选择队列最短的实例）
+- [x] 健康检查（定期检查实例状态）
+- [x] 子域名路由（独占模式支持）
+
+## 待开发
 
 ### Phase 2: 路径重写和数据隔离
 - [ ] 实现路径重写中间件

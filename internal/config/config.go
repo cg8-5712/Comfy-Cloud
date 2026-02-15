@@ -8,15 +8,15 @@ import (
 )
 
 type Config struct {
-	Server       ServerConfig       `mapstructure:"server"`
-	Database     DatabaseConfig     `mapstructure:"database"`
-	JWT          JWTConfig          `mapstructure:"jwt"`
-	ComfyInstances []InstanceConfig `mapstructure:"comfy_instances"`
-	LoadBalancer LoadBalancerConfig `mapstructure:"loadbalancer"`
-	Logging      LoggingConfig      `mapstructure:"logging"`
-	Redis        RedisConfig        `mapstructure:"redis"`
-	RateLimit    RateLimitConfig    `mapstructure:"rate_limit"`
-	Billing      BillingConfig      `mapstructure:"billing"`
+	Server         ServerConfig         `mapstructure:"server"`
+	Database       DatabaseConfig       `mapstructure:"database"`
+	JWT            JWTConfig            `mapstructure:"jwt"`
+	ComfyInstances ComfyInstancesConfig `mapstructure:"comfy_instances"`
+	LoadBalancer   LoadBalancerConfig   `mapstructure:"loadbalancer"`
+	Logging        LoggingConfig        `mapstructure:"logging"`
+	Redis          RedisConfig          `mapstructure:"redis"`
+	RateLimit      RateLimitConfig      `mapstructure:"rate_limit"`
+	Billing        BillingConfig        `mapstructure:"billing"`
 }
 
 type ServerConfig struct {
@@ -40,6 +40,11 @@ type JWTConfig struct {
 
 type InstanceConfig struct {
 	URL string `mapstructure:"url"`
+}
+
+type ComfyInstancesConfig struct {
+	Shared    []InstanceConfig `mapstructure:"shared"`
+	Dedicated []InstanceConfig `mapstructure:"dedicated"`
 }
 
 type LoadBalancerConfig struct {
