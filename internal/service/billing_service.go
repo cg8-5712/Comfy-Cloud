@@ -265,7 +265,11 @@ func (s *BillingService) GetUserUsageStats(userID uint, startDate, endDate time.
 
 // CalculateStorageCost 计算存储费用（按天）
 func (s *BillingService) CalculateStorageCost(storageGB float64, days int) float64 {
-	return s.config.StoragePerGB * storageGB * float64(days)
+	config, err := s.GetActiveConfig()
+	if err != nil {
+		return 0
+	}
+	return config.StoragePerGB * storageGB * float64(days)
 }
 
 // 四舍五入到指定小数位
