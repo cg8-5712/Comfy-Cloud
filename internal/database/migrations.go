@@ -30,6 +30,11 @@ func RunMigrations() error {
 			description: "Add system configs and comfy instances tables",
 			up:          migrateV2,
 		},
+		{
+			version:     "v3",
+			description: "Add recharge, private models, user settings, and system logs tables",
+			up:          migrateV3,
+		},
 	}
 
 	// 执行迁移
@@ -82,5 +87,15 @@ func migrateV2() error {
 	return DB.AutoMigrate(
 		&models.SystemConfig{},
 		&models.ComfyInstance{},
+	)
+}
+
+// migrateV3 添加充值、私有模型、用户设置和系统日志表
+func migrateV3() error {
+	return DB.AutoMigrate(
+		&models.RechargeRecord{},
+		&models.PrivateModel{},
+		&models.UserSettings{},
+		&models.SystemLog{},
 	)
 }

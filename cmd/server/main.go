@@ -15,7 +15,6 @@ import (
 	"comfy-cloud/internal/database"
 	"comfy-cloud/internal/handler"
 	"comfy-cloud/internal/middleware"
-	"comfy-cloud/internal/models"
 	"comfy-cloud/internal/proxy"
 	"comfy-cloud/internal/repository"
 	"comfy-cloud/internal/service"
@@ -68,18 +67,29 @@ func main() {
 
 	// 初始化 Repository 层
 	userRepo := repository.NewUserRepository(database.DB)
+	usageRepo := repository.NewUsageRepository(database.DB)
+	subscriptionRepo := repository.NewSubscriptionRepository(database.DB)
+	rechargeRepo := repository.NewRechargeRepository(database.DB)
+	modelRepo := repository.NewModelRepository(database.DB)
+	settingsRepo := repository.NewSettingsRepository(database.DB)
+	adminRepo := repository.NewAdminRepository(database.DB)
+	configRepo := repository.NewConfigRepository(database.DB)
 
 	// 初始化 Service 层
 	authService := service.NewAuthService(userRepo, cfg)
+	userService := service.NewUserService(userRepo, usageRepo, database.DB)
+	subscriptionService := service.NewSubscriptionService(subscriptionRepo, userRepo, database.DB)
+	usageService := service.NewUsageService(usageRepo, database.DB)
+	rechargeService := service.NewRechargeService(rechargeRepo, userRepo, database.DB)
+	modelService := service.NewModelService(modelRepo, database.DB, cfg.Storage.UserDataDir)
+	settingsService := service.NewSettingsService(settingsRepo, userRepo, database.DB)
+	adminService := service.NewAdminService(adminRepo, userRepo, rechargeRepo, modelRepo, configRepo, database.DB)
 
 	// 初始化配置服务（支持热加载）
 	configService := service.NewConfigService(database.DB)
 	configService.StartAutoReload(30 * time.Second) // 每 30 秒重新加载配置
 	defer configService.Stop()
 	log.Println("Config service initialized with auto-reload")
-
-	// 初始化 Handler 层
-	authHandler := handler.NewAuthHandler(authService)
 
 	// 初始化 ComfyUI 实例池（从数据库加载）
 	instanceService := service.NewInstanceService(database.DB, nil)
@@ -105,6 +115,16 @@ func main() {
 	userDirService := service.NewUserDirectoryService(userDataDir)
 	log.Printf("User directory service initialized (base: %s)", userDataDir)
 
+	// 初始化 Handler 层
+	authHandler := handler.NewAuthHandler(authService)
+	userHandler := handler.NewUserHandler(userService)
+	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService)
+	usageHandler := handler.NewUsageHandler(usageService)
+	rechargeHandler := handler.NewRechargeHandler(rechargeService)
+	modelHandler := handler.NewModelHandler(modelService)
+	settingsHandler := handler.NewSettingsHandler(settingsService)
+	adminHandler := handler.NewAdminHandler(adminService, instanceService, modelService)
+
 	// 设置 Gin 模式
 	gin.SetMode(cfg.Server.Mode)
 
@@ -119,8 +139,18 @@ func main() {
 		})
 	})
 
+	// 认证中间件
+	authMiddleware := middleware.AuthMiddleware()
+
 	// 设置路由
 	authHandler.SetupRoutes(r)
+	userHandler.SetupRoutes(r, authMiddleware)
+	subscriptionHandler.SetupRoutes(r, authMiddleware)
+	usageHandler.SetupRoutes(r, authMiddleware)
+	rechargeHandler.SetupRoutes(r, authMiddleware)
+	modelHandler.SetupRoutes(r, authMiddleware)
+	settingsHandler.SetupRoutes(r, authMiddleware)
+	adminHandler.SetupRoutes(r, authMiddleware)
 
 	// 代理路由（所有 /comfy/* 请求）
 	// 需要认证 + 路径重写
@@ -155,84 +185,6 @@ func main() {
 			"storage_used_gb":  usage,
 			"storage_limit_gb": maxStorage,
 		})
-	})
-
-	// 配置管理接口
-	r.GET("/api/admin/config", func(c *gin.Context) {
-		configs := configService.GetAll()
-		c.JSON(200, gin.H{"configs": configs})
-	})
-
-	r.POST("/api/admin/config", func(c *gin.Context) {
-		var req struct {
-			Category string `json:"category" binding:"required"`
-			Key      string `json:"key" binding:"required"`
-			Value    string `json:"value" binding:"required"`
-		}
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(400, gin.H{"error": err.Error()})
-			return
-		}
-
-		if err := configService.Set(req.Category, req.Key, req.Value); err != nil {
-			c.JSON(500, gin.H{"error": err.Error()})
-			return
-		}
-
-		c.JSON(200, gin.H{"message": "Config updated successfully"})
-	})
-
-	// 实例管理接口
-	r.GET("/api/admin/instances", func(c *gin.Context) {
-		instances, err := instanceService.GetAllInstances()
-		if err != nil {
-			c.JSON(500, gin.H{"error": err.Error()})
-			return
-		}
-		c.JSON(200, gin.H{"instances": instances})
-	})
-
-	r.POST("/api/admin/instances", func(c *gin.Context) {
-		var inst models.ComfyInstance
-		if err := c.ShouldBindJSON(&inst); err != nil {
-			c.JSON(400, gin.H{"error": err.Error()})
-			return
-		}
-
-		if err := instanceService.AddInstance(&inst); err != nil {
-			c.JSON(500, gin.H{"error": err.Error()})
-			return
-		}
-
-		c.JSON(200, gin.H{"message": "Instance added successfully", "instance": inst})
-	})
-
-	r.PUT("/api/admin/instances/:id", func(c *gin.Context) {
-		var inst models.ComfyInstance
-		if err := c.ShouldBindJSON(&inst); err != nil {
-			c.JSON(400, gin.H{"error": err.Error()})
-			return
-		}
-
-		if err := instanceService.UpdateInstance(&inst); err != nil {
-			c.JSON(500, gin.H{"error": err.Error()})
-			return
-		}
-
-		c.JSON(200, gin.H{"message": "Instance updated successfully"})
-	})
-
-	r.DELETE("/api/admin/instances/:id", func(c *gin.Context) {
-		id := c.Param("id")
-		var idUint uint
-		fmt.Sscanf(id, "%d", &idUint)
-
-		if err := instanceService.DeleteInstance(idUint); err != nil {
-			c.JSON(500, gin.H{"error": err.Error()})
-			return
-		}
-
-		c.JSON(200, gin.H{"message": "Instance deleted successfully"})
 	})
 
 	// 实例状态查询
