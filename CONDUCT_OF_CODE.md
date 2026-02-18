@@ -112,127 +112,143 @@ ComfyUI 自动读取 token，注入到所有请求
 
 ---
 
-### Phase 2.6: 管理平台前端开发 🌐
+### Phase 2.6: 管理平台前端开发 ✅
 
 **重要说明**：这是一个独立的前端项目，与 ComfyUI 前端完全分离
 
-#### 技术栈选择
-- 框架：React / Vue / Next.js / Nuxt（自选）
-- UI 库：Ant Design / Element Plus / Tailwind CSS（自选）
-- 状态管理：Redux / Pinia / Zustand（自选）
+#### 技术栈
+- 框架：React 18 + TypeScript 5
+- 构建工具：Vite 6
+- UI 库：Tailwind CSS 3.4 + shadcn/ui
+- 状态管理：Zustand
+- 路由：React Router v7
+- HTTP 客户端：Axios
+- 图表：Recharts
 
-#### 2.6.1 认证页面
-- [ ] 登录页面 `/login`
+#### 2.6.1 认证页面 ✅
+- [x] 登录页面 `/login`
   - 用户名/密码登录
-  - 记住我选项
-  - 忘记密码链接
+  - Glassmorphism 设计风格
   - 调用 `POST /api/auth/login`
-  - 登录成功后：
-    - 存储 token 到 localStorage（key: `comfy_cloud_token`）
-    - 跳转到 ComfyUI：`window.location.href = 'https://comfyui.your-domain.com'`
+  - 登录成功后存储 token 到 localStorage
+  - 根据用户角色跳转（admin → `/admin`，user → `/account`）
 
-- [ ] 注册页面 `/register`
+- [x] 注册页面 `/register`
   - 用户名、邮箱、密码
-  - 密码确认
+  - 密码确认验证
   - 调用 `POST /api/auth/register`
 
-- [ ] 忘记密码页面 `/forgot-password`（可选）
+#### 2.6.2 账户管理页面 ✅
+- [x] 账户概览 `/account`
+  - 账户余额、订阅等级、存储空间、快速启动
+  - 最近活动、快捷操作
+  - 订阅等级动态从后端获取（`GET /api/tiers`）
 
-#### 2.6.2 账户管理页面
-- [ ] 账户概览 `/account/dashboard`
-  - 当前余额
-  - 订阅状态和到期时间
-  - 本月使用统计（GPU 时长、存储用量、费用）
-  - 快捷操作按钮（充值、升级订阅、跳转到 ComfyUI）
-
-- [ ] 充值页面 `/account/recharge`
-  - 充值金额选择（预设金额 + 自定义）
-  - 支付方式选择（支付宝/微信/信用卡）
+- [x] 充值页面 `/account/recharge`
+  - 预设金额（10/50/100/500/1000）+ 自定义金额
+  - 订阅方案展示（动态从 tierStore 获取）
   - 调用 `POST /api/recharge`
-  - 充值记录列表
 
-- [ ] 使用记录 `/account/usage`
-  - 使用记录列表（时间、任务类型、GPU 时长、费用）
-  - 日期范围筛选
-  - 导出 CSV
+- [x] 使用记录 `/account/usage`
+  - 统计概览（GPU 时长、存储用量、任务数量、总费用）
+  - 使用记录表格（类型、时间、时长、费用）
+  - 分页支持
   - 调用 `GET /api/usage/records`
 
-- [ ] 订阅管理 `/account/subscription`
-  - 当前订阅详情
-  - 订阅计划对比（Basic/Pro/Enterprise）
-  - 升级/降级订阅
-  - 订阅历史
-  - 调用 `GET /api/subscription` 和 `POST /api/subscription/upgrade`
-
-- [ ] 个人设置 `/account/settings`
-  - 修改密码
-  - 修改邮箱
-  - 通知设置
-  - API Key 管理（可选）
-  - 调用 `GET /api/settings` 和 `PATCH /api/settings`
-
-- [ ] 模型管理 `/account/models`
-  - 我的私有模型列表
-  - 上传模型（支持拖拽）
+- [x] 模型管理 `/account/models`
+  - 私有模型列表（名称、类型、大小、上传时间、日费用）
+  - 上传模型（拖拽上传、类型选择）
   - 删除模型
-  - 模型大小和存储费用显示
+  - 存储统计（模型数量、总存储、每日费用）
   - 调用 `GET /api/models/private`、`POST /api/models/upload`、`DELETE /api/models/private/:id`
 
-#### 2.6.3 Admin 管理后台
-- [ ] Admin 登录 `/admin/login`
-  - 独立的管理员登录页面
-  - 验证管理员权限
+- [x] 订阅管理 `/account/subscription`
+  - 当前订阅详情（方案、状态、到期时间、自动续费）
+  - 订阅方案对比卡片（动态从 tierStore 获取）
+  - 升级/降级订阅
+  - 调用 `GET /api/subscription`、`POST /api/subscription/upgrade`
 
-- [ ] 用户管理 `/admin/users`
-  - 用户列表（分页、搜索、筛选）
-  - 用户详情（余额、订阅、使用统计）
-  - 用户操作（封禁、解封、删除、手动充值、调整订阅）
-  - 批量操作
+- [x] 个人设置 `/account/settings`
+  - 个人信息展示
+  - 修改密码
+  - 危险操作（删除账户）
+  - 调用 `PATCH /api/settings` 和 `POST /api/settings/password`
 
-- [ ] 订阅管理 `/admin/subscriptions`
-  - 订阅计划配置（价格、配额、功能）
-  - 订阅记录查询
-  - 手动调整用户订阅
+#### 2.6.3 Admin 管理后台 ✅
+- [x] 管理概览 `/admin`
+  - 7 个统计卡片（总用户、今日活跃、今日任务、总收入、在线实例、平均队列、GPU 利用率）
+  - 使用趋势图表（ChartAreaInteractive - 30 天数据）
+  - 调用 `GET /api/admin/stats`
 
-- [ ] 模型管理 `/admin/models`
-  - 基础模型管理（上传、删除、标记为 VIP）
-  - VIP 模型管理
-  - 用户私有模型审核
-  - 模型存储统计
+- [x] 用户管理 `/admin/users`
+  - 用户列表（ID、用户名、邮箱、等级、余额、状态、角色）
+  - 搜索功能（用户名/邮箱）
+  - 分页支持（20 条/页）
+  - 编辑用户（等级、状态、角色、余额）
+  - 调用 `GET /api/admin/users` 和 `PATCH /api/admin/users/:id`
 
-- [ ] 实例监控 `/admin/instances` 📊
-  - 实例列表和状态（在线/离线、IP、端口、运行时长）
-  - 实时使用情况（队列长度、GPU 利用率、显存、CPU、内存）
-  - 硬件信息（GPU 型号、显存容量、CUDA 版本、驱动版本）
-  - 历史负载曲线（GPU 利用率、显存、队列长度 - 1h/24h/7d/30d）
-  - 性能指标（总任务数、平均耗时、成功率）
-  - 实例操作（重启、暂停、恢复、查看日志）
-  - 告警设置
-  - 调用 `/api/admin/instances/*` 系列接口
+- [x] 实例监控 `/admin/instances`
+  - 3 个汇总卡片（在线实例、平均 GPU 利用率、总队列长度）
+  - 实例详情卡片（GPU 型号、VRAM、队列、运行时间、利用率进度条）
+  - 实时刷新按钮
+  - 调用 `GET /api/admin/instances`
 
-- [ ] 财务报表 `/admin/finance`
-  - 收入统计（日/周/月）
-  - 充值记录
-  - 消费记录
-  - 用户消费排行
-  - 导出财务报表
+- [x] 模型管理 `/admin/models`
+  - 按可见性筛选（全部/基础/VIP/私有）
+  - 模型列表（名称、类型、可见性、大小、所有者、状态）
+  - 编辑模型（可见性、状态）
+  - 删除模型
+  - 调用 `GET /api/admin/models`、`PATCH /api/admin/models/:id`、`DELETE /api/admin/models/:id`
 
-- [ ] 系统配置 `/admin/config`
-  - 计费规则配置
-  - 实例池配置
-  - 系统参数调整
+- [x] 财务报表 `/admin/finance`
+  - 6 个收入统计卡片（总收入、今日/本周/本月收入、充值笔数、平均充值金额）
+  - 充值记录表格（用户、金额、支付方式、状态、时间）
+  - 分页支持
+  - 调用 `GET /api/admin/finance/stats`、`GET /api/admin/finance/recharges`
 
-- [ ] 日志查看 `/admin/logs`
-  - 系统日志查询
-  - 错误日志
-  - 用户操作日志
-  - 按时间/用户/类型筛选
+- [x] 系统配置 `/admin/config`
+  - 计费规则配置（GPU 单价、存储单价、带宽单价）
+  - 实例池配置（最大队列、健康检查间隔、自动扩缩容开关）
+  - 系统参数（最大上传大小、允许的模型类型、维护模式开关）
+  - 调用 `GET /api/admin/config`、`PATCH /api/admin/config`
 
-#### 代码量估算
-- 认证页面：400 行
-- 账户管理页面：1500 行
-- Admin 管理后台：2500 行
+- [x] 系统日志 `/admin/logs`
+  - 按级别筛选（info/warn/error）
+  - 按来源筛选（auth/proxy/billing/system/admin）
+  - 日志表格（级别、来源、消息、用户、时间）
+  - 分页支持
+  - 调用 `GET /api/admin/logs`
+
+#### Mock API 支持 ✅
+- [x] 完整的 Mock API 实现（`src/api/mock.ts`）
+  - 2 个测试用户（普通用户 + 管理员，角色区分）
+  - 3 个订阅等级配置
+  - 15 条使用记录
+  - 25 个模拟用户（Admin 用户管理）
+  - 3 个 ComfyUI 实例
+  - 5 个私有模型 + 9 个管理模型（4 系统 + 5 用户）
+  - 30 条充值记录
+  - 50 条系统日志
+  - 财务统计数据、系统配置数据
+  - 300ms 延迟模拟网络请求
+
+- [x] 环境变量控制
+  - 开发环境默认使用 Mock API（`VITE_USE_MOCK_API=true`）
+  - 生产环境使用真实 API（`VITE_USE_MOCK_API=false`）
+
+#### 测试账号
+- **普通用户**：任意用户名 + 密码 `demo` 或 `123456`
+- **管理员**：用户名 `admin` + 密码 `admin`
+
+#### 代码统计
+- 认证页面：~400 行
+- 账户管理页面：~1800 行（含模型管理、订阅管理）
+- Admin 管理后台：~1500 行（概览、用户、实例、模型、财务、配置、日志）
+- Mock API：~700 行
 - **管理平台前端总计：约 4400 行**
+
+#### 相关文档
+- `frontend/README.md` - 前端开发指南和 Mock API 使用说明
 
 ---
 
@@ -271,12 +287,13 @@ ComfyUI 自动读取 token，注入到所有请求
 - [ ] `POST /api/settings/password` - 修改密码
 
 #### 3.8 Admin API
-- [ ] 用户管理接口
-- [ ] 订阅管理接口
-- [ ] 模型管理接口
-- [ ] 实例监控接口（`/api/admin/instances/*`）
-- [ ] 财务报表接口
-- [ ] 系统配置接口
+- [ ] 用户管理接口（`GET /api/admin/users`、`PATCH /api/admin/users/:id`）
+- [ ] 模型管理接口（`GET /api/admin/models`、`PATCH /api/admin/models/:id`、`DELETE /api/admin/models/:id`）
+- [ ] 实例监控接口（`GET /api/admin/instances`）
+- [ ] 财务报表接口（`GET /api/admin/finance/stats`、`GET /api/admin/finance/recharges`）
+- [ ] 系统配置接口（`GET /api/admin/config`、`PATCH /api/admin/config`）
+- [ ] 系统日志接口（`GET /api/admin/logs`）
+- [ ] 管理统计接口（`GET /api/admin/stats`）
 
 **详细 API 规范见**: `API_SPECIFICATION.md`
 
@@ -385,20 +402,19 @@ ComfyUI 自动读取 token，注入到所有请求
 
 ### 第一阶段：核心功能（必须）
 1. ~~**Phase 2.5** - ComfyUI 前端集成~~ ✅ **已完成**
-2. **Phase 3** - 后端 API 实现（18 个端点）🔥 **进行中**
-3. **Phase 2.6** - 管理平台前端开发（认证 + 账户管理）
+2. ~~**Phase 2.6** - 管理平台前端开发（认证 + 账户管理 + Admin 后台）~~ ✅ **已完成**
+3. **Phase 3** - 后端 API 实现（18 个端点）🔥 **下一步**
 
 ### 第二阶段：增强功能（重要）
 4. **Phase 4** - 模型权限控制
 5. **Phase 5** - 智能调度
 6. **Phase 6** - 计费集成
-7. **Phase 2.6** - 管理平台前端（Admin 后台）
 
 ### 第三阶段：优化和扩展（可选）
-8. **Phase 7** - WebSocket 代理
-9. **Phase 8** - 独占模式
-10. **Phase 9** - 监控和运维
-11. **Phase 10** - 部署
+7. **Phase 7** - WebSocket 代理
+8. **Phase 8** - 独占模式
+9. **Phase 9** - 监控和运维
+10. **Phase 10** - 部署
 
 ---
 
