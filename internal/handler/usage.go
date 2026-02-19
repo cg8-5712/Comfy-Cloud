@@ -41,11 +41,27 @@ func (h *UsageHandler) GetUsageRecords(c *gin.Context) {
 	})
 }
 
+// GetUsageStats 获取使用统计
+// GET /api/usage/stats?period=month
+func (h *UsageHandler) GetUsageStats(c *gin.Context) {
+	userID := c.GetUint("user_id")
+	period := c.DefaultQuery("period", "month")
+
+	stats, err := h.usageService.GetUsageStats(userID, period)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, stats)
+}
+
 // SetupRoutes 设置路由
 func (h *UsageHandler) SetupRoutes(r *gin.Engine, authMiddleware gin.HandlerFunc) {
 	usage := r.Group("/api/usage")
 	usage.Use(authMiddleware)
 	{
 		usage.GET("/records", h.GetUsageRecords)
+		usage.GET("/stats", h.GetUsageStats)
 	}
 }

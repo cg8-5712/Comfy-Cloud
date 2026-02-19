@@ -82,3 +82,48 @@ func (s *UsageService) GetUsageRecords(userID uint, limit, offset int, startDate
 
 	return result, total, nil
 }
+
+// GetUsageStats 获取使用统计
+func (s *UsageService) GetUsageStats(userID uint, period string) (map[string]interface{}, error) {
+	var startDate time.Time
+	now := time.Now()
+
+	switch period {
+	case "day":
+		startDate = now.AddDate(0, 0, -1)
+	case "week":
+		startDate = now.AddDate(0, 0, -7)
+	case "month":
+		startDate = now.AddDate(0, -1, 0)
+	case "year":
+		startDate = now.AddDate(-1, 0, 0)
+	default:
+		startDate = now.AddDate(0, -1, 0)
+	}
+
+	var totalCost float64
+	var totalSeconds float64
+	var taskCount int64
+
+	s.db.Model(&models.UsageRecord{}).
+		Where("user_id = ? AND started_at >= ?", userID, startDate).
+		Select("COALESCE(SUM(total_cost), 0)").Scan(&totalCost)
+
+	s.db.Model(&models.UsageRecord{}).
+		Where("user_id = ? AND started_at >= ?", userID, startDate).
+		Select("COALESCE(SUM(execution_time), 0)").Scan(&totalSeconds)
+
+	s.db.Model(&models.UsageRecord{}).
+		Where("user_id = ? AND started_at >= ?", userID, startDate).
+		Count(&taskCount)
+
+	return map[string]interface{}{
+		"period":           period,
+		"start_date":       startDate.Format("2006-01-02"),
+		"end_date":         now.Format("2006-01-02"),
+		"gpu_seconds":      totalSeconds,
+		"storage_gb_hours": 0,
+		"total_cost":       totalCost,
+		"task_count":       taskCount,
+	}, nil
+}
