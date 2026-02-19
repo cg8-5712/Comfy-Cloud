@@ -28,9 +28,9 @@ func AuthMiddleware() gin.HandlerFunc {
 		}
 
 		// 注入用户信息到 Context
-		c.Set("userId", claims.UserID)
+		c.Set("user_id", claims.UserID)
 		c.Set("username", claims.Username)
-		c.Set("userTier", claims.Tier)
+		c.Set("user_tier", claims.Tier)
 		c.Next()
 	}
 }

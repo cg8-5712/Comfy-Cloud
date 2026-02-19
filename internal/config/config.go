@@ -8,6 +8,7 @@ import (
 )
 
 type Config struct {
+	Env            string               `mapstructure:"env"` // dev/prod
 	Server         ServerConfig         `mapstructure:"server"`
 	Database       DatabaseConfig       `mapstructure:"database"`
 	JWT            JWTConfig            `mapstructure:"jwt"`
@@ -105,6 +106,9 @@ func Load() *Config {
 }
 
 func setDefaults() {
+	// Env
+	viper.SetDefault("env", "prod")
+
 	// Server
 	viper.SetDefault("server.port", 3000)
 	viper.SetDefault("server.mode", "release")

@@ -60,15 +60,28 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 // Verify 验证 Token
 func (h *AuthHandler) Verify(c *gin.Context) {
-	userID := c.GetUint("userId")
+	userID := c.GetUint("user_id")
 	username := c.GetString("username")
-	userTier := c.GetString("userTier")
+	userTier := c.GetString("user_tier")
 
 	c.JSON(200, gin.H{
 		"user_id":  userID,
 		"username": username,
 		"tier":     userTier,
 	})
+}
+
+// GetCurrentUser 获取当前用户信息
+func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
+	userID := c.GetUint("user_id")
+
+	user, err := h.authService.GetUserByID(userID)
+	if err != nil {
+		c.JSON(404, gin.H{"error": "User not found"})
+		return
+	}
+
+	c.JSON(200, user)
 }
 
 // SetupRoutes 设置认证路由
@@ -78,5 +91,6 @@ func (h *AuthHandler) SetupRoutes(r *gin.Engine) {
 		authGroup.POST("/register", h.Register)
 		authGroup.POST("/login", h.Login)
 		authGroup.GET("/verify", middleware.AuthMiddleware(), h.Verify)
+		authGroup.GET("/me", middleware.AuthMiddleware(), h.GetCurrentUser)
 	}
 }

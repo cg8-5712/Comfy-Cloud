@@ -35,6 +35,11 @@ func RunMigrations() error {
 			description: "Add recharge, private models, user settings, and system logs tables",
 			up:          migrateV3,
 		},
+		{
+			version:     "v4",
+			description: "Add role field to users table",
+			up:          migrateV4,
+		},
 	}
 
 	// 执行迁移
@@ -98,4 +103,9 @@ func migrateV3() error {
 		&models.UserSettings{},
 		&models.SystemLog{},
 	)
+}
+
+// migrateV4 给 users 表添加 role 字段
+func migrateV4() error {
+	return DB.AutoMigrate(&models.User{})
 }

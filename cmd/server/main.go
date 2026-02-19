@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 
 	"comfy-cloud/internal/auth"
@@ -59,8 +60,8 @@ func main() {
 	}
 	log.Println("Database migrations completed successfully")
 
-	// 初始化默认数据
-	if err := database.SeedAll(); err != nil {
+	// 初始化默认数据（仅 dev 环境）
+	if err := database.SeedAll(cfg.Env); err != nil {
 		log.Fatalf("Failed to seed database: %v", err)
 	}
 	log.Println("Database seeding completed successfully")
@@ -130,6 +131,15 @@ func main() {
 
 	// 创建 Gin 引擎
 	r := gin.Default()
+
+	// CORS
+	r.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"http://localhost:3000", "http://localhost:5173"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+	}))
 
 	// 健康检查
 	r.GET("/health", func(c *gin.Context) {

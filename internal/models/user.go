@@ -11,6 +11,7 @@ type User struct {
 	Username     string         `gorm:"uniqueIndex;size:50;not null" json:"username"`
 	Email        string         `gorm:"uniqueIndex;size:100;not null" json:"email"`
 	PasswordHash string         `gorm:"size:255;not null" json:"-"`
+	Role          string         `gorm:"size:20;default:user" json:"role"` // admin/user
 	Tier          string         `gorm:"size:20;default:basic" json:"tier"` // basic/pro/enterprise
 	Balance       float64        `gorm:"type:decimal(10,2);default:0.00" json:"balance"`
 	FrozenBalance float64        `gorm:"type:decimal(10,2);default:0.00" json:"frozen_balance"` // 预扣费冻结余额

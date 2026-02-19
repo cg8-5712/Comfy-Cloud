@@ -207,9 +207,8 @@ func (s *AdminService) CheckAdminPermission(userID uint) error {
 		return err
 	}
 
-	// 检查用户角色（需要在 User 模型中添加 Role 字段）
-	// 这里简化处理，假设 user_id = 1 是管理员
-	if user.ID != 1 {
+	// 检查用户角色
+	if user.Role != "admin" {
 		return errors.New("permission denied: admin access required")
 	}
 
