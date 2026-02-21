@@ -35,7 +35,22 @@ func AuthMiddleware() gin.HandlerFunc {
 	}
 }
 
-// extractToken 从 Header 或 Query 提取 Token
+// ComfyAuthMiddleware ComfyUI 代理认证中间件
+// 所有请求可选认证：有 token 就解析注入 user_id，没有也放行
+// ComfyUI 前端自身的 auth store 负责处理未登录状态
+func ComfyAuthMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		tokenString := extractToken(c)
+		if tokenString != "" {
+			if claims, err := auth.ParseToken(tokenString); err == nil {
+				c.Set("user_id", claims.UserID)
+				c.Set("username", claims.Username)
+				c.Set("user_tier", claims.Tier)
+			}
+		}
+		c.Next()
+	}
+}
 func extractToken(c *gin.Context) string {
 	// 从 Authorization Header 提取
 	bearerToken := c.GetHeader("Authorization")

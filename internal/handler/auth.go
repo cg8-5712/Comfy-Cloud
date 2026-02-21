@@ -84,6 +84,11 @@ func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
 	c.JSON(200, user)
 }
 
+// Logout 登出
+func (h *AuthHandler) Logout(c *gin.Context) {
+	c.JSON(200, gin.H{"message": "Logged out successfully"})
+}
+
 // SetupRoutes 设置认证路由
 func (h *AuthHandler) SetupRoutes(r *gin.Engine) {
 	authGroup := r.Group("/api/auth")
@@ -92,5 +97,6 @@ func (h *AuthHandler) SetupRoutes(r *gin.Engine) {
 		authGroup.POST("/login", h.Login)
 		authGroup.GET("/verify", middleware.AuthMiddleware(), h.Verify)
 		authGroup.GET("/me", middleware.AuthMiddleware(), h.GetCurrentUser)
+		authGroup.POST("/logout", middleware.AuthMiddleware(), h.Logout)
 	}
 }

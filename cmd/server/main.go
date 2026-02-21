@@ -163,9 +163,9 @@ func main() {
 	adminHandler.SetupRoutes(r, authMiddleware)
 
 	// 代理路由（所有 /comfy/* 请求）
-	// 需要认证 + 路径重写
+	// 静态资源不需要认证，API 请求需要认证
 	comfyGroup := r.Group("/comfy")
-	comfyGroup.Use(middleware.AuthMiddleware())
+	comfyGroup.Use(middleware.ComfyAuthMiddleware())
 	comfyGroup.Use(middleware.PathRewriteMiddleware())
 	{
 		comfyGroup.Any("/*path", proxyHandler.Route)

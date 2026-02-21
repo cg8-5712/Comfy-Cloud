@@ -119,6 +119,11 @@ func (h *ProxyHandler) proxyTo(c *gin.Context, instance *Instance) {
 	originalDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
 		originalDirector(req)
+		// 去掉 /comfy 前缀
+		req.URL.Path = strings.TrimPrefix(req.URL.Path, "/comfy")
+		if req.URL.Path == "" {
+			req.URL.Path = "/"
+		}
 		// 设置正确的 Host
 		req.Host = target.Host
 		// 添加自定义 header
