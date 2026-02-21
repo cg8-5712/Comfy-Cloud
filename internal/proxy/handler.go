@@ -140,6 +140,11 @@ func (h *ProxyHandler) proxyTo(c *gin.Context, instance *Instance) {
 
 		req.Header.Set("X-Forwarded-Host", c.Request.Host)
 		req.Header.Set("X-Instance-ID", instance.ID)
+
+		// 强制设置 Comfy-User（覆盖前端发来的空值）
+		if comfyUser := c.Request.Header.Get("Comfy-User"); comfyUser != "" {
+			req.Header.Set("Comfy-User", comfyUser)
+		}
 	}
 
 	// 错误处理

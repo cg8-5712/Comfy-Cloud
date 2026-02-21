@@ -54,12 +54,13 @@ ComfyUI 自动读取 token，注入到所有请求
 
 ### Phase 2: 路径重写和数据隔离
 - [x] 实现路径重写中间件
-  - `/output/` → `/users/{user_id}/output/`
-  - `/workflows/` → `/users/{user_id}/workflows/`
-  - `/upload/` → `/users/{user_id}/upload/`
-  - Workflow JSON 路径重写
+  - ComfyUI 原生多用户支持（`Comfy-User` header）
+  - SaveImage `filename_prefix` 重写（输出目录隔离）
+  - `/view` 子目录验证（防止路径穿越）
+  - `/upload` 子目录注入（上传文件隔离）
 - [x] 文件系统布局设计
 - [x] 用户目录初始化服务
+- [x] ComfyUI 后端自动注册用户（`user_manager.py` 修改）
 
 ### Phase 2.5: ComfyUI 前端集成 ✅
 
@@ -96,13 +97,33 @@ ComfyUI 自动读取 token，注入到所有请求
   - 添加 `comfy-cloud` distribution 支持
   - 新增 `build:comfy-cloud` 构建脚本
 
+#### v1.1.0 多用户隔离增强（已完成）
+- [x] ComfyUI 后端自动注册（`user_manager.py`）
+  - 代理传来的 `Comfy-User` header 自动注册到 `users.json`
+  - 只在 `--multi-user` 模式下生效
+
+- [x] 前端 role 权限控制
+  - `ComfyCloudUser` 接口新增 `role` 字段
+  - `comfyCloudAuthStore` 导出 `isAdmin` computed
+  - 登录后自动设置 `api.user = user_{id}`
+
+- [x] 路由守卫增强
+  - GraphView 初始化 userStore 并自动登录（修复：不能跳过 initialize）
+  - user-select 路由等待 auth 初始化后检查 admin 权限
+  - 普通用户无法访问 `/user-select`，只有 admin 可以
+
+- [x] 管理平台 URL 修复
+  - 三处 `VITE_ADMIN_URL` 默认值统一改为 `window.location.origin`
+  - 确保跳转到当前访问的域名而非硬编码域名
+
 #### 代码统计
 - 核心认证：470 行
 - UI 组件：256 行
-- **ComfyUI 前端总计：约 726 行**
+- v1.1.0 增强：~150 行
+- **ComfyUI 前端总计：约 876 行**
 
 #### 相关文档
-- `COMFY_FRONTEND_MODIFICATIONS.md` - 详细修改说明和迁移指南
+- `COMFY_FRONTEND_MODIFICATIONS.md` - 详细修改说明和迁移指南（含 v1.1.0）
 - `PHASE_2.5_COMPLETION_SUMMARY.md` - 完成总结和测试清单
 - `WEBSOCKET_AUTH_OPTIONS.md` - WebSocket 认证方案说明
 
@@ -252,48 +273,56 @@ ComfyUI 自动读取 token，注入到所有请求
 
 ---
 
-### Phase 3: 后端 API 实现
+### Phase 3: 后端 API 实现 ✅
 
-#### 3.1 认证 API（已有基础，需完善）
-- [ ] `POST /api/auth/login` - 登录
-- [ ] `POST /api/auth/register` - 注册
-- [ ] `POST /api/auth/logout` - 登出
-- [ ] `POST /api/auth/refresh` - 刷新 token
+#### 3.1 认证 API（已完成）
+- [x] `POST /api/auth/login` - 登录
+- [x] `POST /api/auth/register` - 注册
+- [x] `POST /api/auth/logout` - 登出
+- [x] `GET /api/auth/verify` - 验证 token
+- [x] `GET /api/auth/me` - 获取当前用户
 
-#### 3.2 用户信息 API
-- [ ] `GET /api/user/info` - 获取用户信息
-- [ ] `GET /api/user/balance` - 获取余额
-- [ ] `GET /api/user/usage` - 获取使用统计
+#### 3.2 用户信息 API（已完成）
+- [x] `GET /api/user/info` - 获取用户信息（含 `role` 字段）
+- [x] `GET /api/user/balance` - 获取余额
+- [x] `GET /api/user/usage` - 获取使用统计
 
-#### 3.3 订阅管理 API
-- [ ] `GET /api/subscription` - 获取订阅信息
-- [ ] `POST /api/subscription/upgrade` - 升级订阅
+#### 3.3 订阅管理 API（已完成）
+- [x] `GET /api/tiers` - 获取订阅等级列表
+- [x] `GET /api/subscription` - 获取订阅信息
+- [x] `POST /api/subscription/upgrade` - 升级订阅
 
-#### 3.4 充值 API
-- [ ] `POST /api/recharge` - 创建充值订单
-- [ ] `GET /api/recharge/history` - 充值记录
+#### 3.4 充值 API（已完成）
+- [x] `POST /api/recharge` - 创建充值订单
+- [x] `GET /api/recharge/history` - 充值记录
 
-#### 3.5 使用记录 API
-- [ ] `GET /api/usage/records` - 使用记录列表
+#### 3.5 使用记录 API（已完成）
+- [x] `GET /api/usage/records` - 使用记录列表
+- [x] `GET /api/usage/stats` - 使用统计
 
-#### 3.6 模型管理 API
-- [ ] `GET /api/models/private` - 私有模型列表
-- [ ] `POST /api/models/upload` - 上传模型
-- [ ] `DELETE /api/models/private/:id` - 删除模型
+#### 3.6 模型管理 API（已完成）
+- [x] `GET /api/models/private` - 私有模型列表
+- [x] `POST /api/models/upload` - 上传模型
+- [x] `DELETE /api/models/private/:id` - 删除模型
 
-#### 3.7 设置 API
-- [ ] `GET /api/settings` - 获取设置
-- [ ] `PATCH /api/settings` - 更新设置
-- [ ] `POST /api/settings/password` - 修改密码
+#### 3.7 设置 API（已完成）
+- [x] `GET /api/settings` - 获取设置
+- [x] `PATCH /api/settings` - 更新设置
+- [x] `POST /api/settings/password` - 修改密码
 
-#### 3.8 Admin API
-- [ ] 用户管理接口（`GET /api/admin/users`、`PATCH /api/admin/users/:id`）
-- [ ] 模型管理接口（`GET /api/admin/models`、`PATCH /api/admin/models/:id`、`DELETE /api/admin/models/:id`）
-- [ ] 实例监控接口（`GET /api/admin/instances`）
-- [ ] 财务报表接口（`GET /api/admin/finance/stats`、`GET /api/admin/finance/recharges`）
-- [ ] 系统配置接口（`GET /api/admin/config`、`PATCH /api/admin/config`）
-- [ ] 系统日志接口（`GET /api/admin/logs`）
-- [ ] 管理统计接口（`GET /api/admin/stats`）
+#### 3.8 Admin API（已完成）
+- [x] `GET /api/admin/stats` - 管理统计
+- [x] `GET /api/admin/users` - 用户列表
+- [x] `PATCH /api/admin/users/:id` - 更新用户
+- [x] `GET /api/admin/instances` - 实例监控
+- [x] `GET /api/admin/models` - 模型列表
+- [x] `PATCH /api/admin/models/:id` - 更新模型
+- [x] `DELETE /api/admin/models/:id` - 删除模型
+- [x] `GET /api/admin/finance/stats` - 财务统计
+- [x] `GET /api/admin/finance/recharges` - 充值记录
+- [x] `GET /api/admin/config` - 系统配置
+- [x] `PATCH /api/admin/config` - 更新配置
+- [x] `GET /api/admin/logs` - 系统日志
 
 **详细 API 规范见**: `API_SPECIFICATION.md`
 
@@ -403,10 +432,10 @@ ComfyUI 自动读取 token，注入到所有请求
 ### 第一阶段：核心功能（必须）
 1. ~~**Phase 2.5** - ComfyUI 前端集成~~ ✅ **已完成**
 2. ~~**Phase 2.6** - 管理平台前端开发（认证 + 账户管理 + Admin 后台）~~ ✅ **已完成**
-3. **Phase 3** - 后端 API 实现（18 个端点）🔥 **下一步**
+3. ~~**Phase 3** - 后端 API 实现（30+ 个端点）~~ ✅ **已完成**
 
 ### 第二阶段：增强功能（重要）
-4. **Phase 4** - 模型权限控制
+4. **Phase 4** - 模型权限控制 🔥 **下一步**
 5. **Phase 5** - 智能调度
 6. **Phase 6** - 计费集成
 

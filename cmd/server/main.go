@@ -165,22 +165,54 @@ func main() {
 	settingsHandler.SetupRoutes(r, authMiddleware)
 	adminHandler.SetupRoutes(r, authMiddleware)
 
-	// ComfyUI 代理（用中间件拦截，绕过 Gin 路由匹配，避免编码路径/空格导致 405）
-	comfyAuth := middleware.ComfyAuthMiddleware()
-	comfyRewrite := middleware.PathRewriteMiddleware()
+	// ComfyUI 代理（用中间件拦截，绕过 Gin 路由匹配）
 	r.Use(func(c *gin.Context) {
 		if !strings.HasPrefix(c.Request.URL.Path, "/comfy") {
 			c.Next()
 			return
 		}
-		comfyAuth(c)
-		if c.IsAborted() {
-			return
+
+		// 1. 认证：提取 token，注入 user_id（可选，无 token 也放行）
+		tokenString := middleware.ExtractToken(c)
+		log.Printf("[ComfyProxy] path=%s token_present=%v", c.Request.URL.Path, tokenString != "")
+		if tokenString != "" {
+			if claims, err := auth.ParseToken(tokenString); err == nil {
+				c.Set("user_id", claims.UserID)
+				c.Set("username", claims.Username)
+				c.Set("user_tier", claims.Tier)
+				log.Printf("[ComfyProxy] auth OK: user_id=%d username=%s", claims.UserID, claims.Username)
+			} else {
+				log.Printf("[ComfyProxy] auth FAIL: %v", err)
+			}
 		}
-		comfyRewrite(c)
-		if c.IsAborted() {
-			return
+
+		// 2. 路径重写：数据隔离
+		if userID, exists := c.Get("user_id"); exists {
+			uid := userID.(uint)
+			prefix := fmt.Sprintf("user_%d", uid)
+			path := c.Request.URL.Path
+
+			// Comfy-User header → 工作流/设置隔离
+			c.Request.Header.Set("Comfy-User", prefix)
+			log.Printf("[ComfyProxy] set Comfy-User=%s (was: %s)", prefix, c.GetHeader("Comfy-User"))
+
+			// /view 请求：校验 subfolder
+			if path == "/comfy/view" {
+				middleware.RewriteViewRequest(c, prefix)
+			}
+
+			// /prompt 请求：改写 SaveImage filename_prefix
+			if c.Request.Method == "POST" && strings.HasSuffix(path, "/prompt") {
+				middleware.RewritePromptBody(c, prefix)
+			}
+
+			// /upload 请求：注入 subfolder
+			if c.Request.Method == "POST" && (strings.HasSuffix(path, "/upload/image") || strings.HasSuffix(path, "/upload/mask")) {
+				middleware.RewriteUploadRequest(c, prefix)
+			}
 		}
+
+		// 3. 转发到 ComfyUI
 		proxyHandler.Route(c)
 		c.Abort()
 	})

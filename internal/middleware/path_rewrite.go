@@ -43,25 +43,25 @@ func PathRewriteMiddleware() gin.HandlerFunc {
 
 		// 2. /view 请求：校验 subfolder 防止跨用户访问
 		if path == "/view" || path == "/comfy/view" {
-			rewriteViewRequest(c, prefix)
+			RewriteViewRequest(c, prefix)
 		}
 
 		// 3. /prompt 请求：改写 SaveImage 节点的 filename_prefix
 		if c.Request.Method == "POST" && (path == "/prompt" || path == "/comfy/prompt") {
-			rewritePromptBody(c, prefix)
+			RewritePromptBody(c, prefix)
 		}
 
 		// 4. /upload/image 请求：注入 subfolder
 		if c.Request.Method == "POST" && (strings.HasSuffix(path, "/upload/image") || strings.HasSuffix(path, "/upload/mask")) {
-			rewriteUploadRequest(c, prefix)
+			RewriteUploadRequest(c, prefix)
 		}
 
 		c.Next()
 	}
 }
 
-// rewriteViewRequest 校验并改写 /view 请求的 subfolder
-func rewriteViewRequest(c *gin.Context, prefix string) {
+// RewriteViewRequest 校验并改写 /view 请求的 subfolder（导出供 main 直接调用）
+func RewriteViewRequest(c *gin.Context, prefix string) {
 	viewType := c.Query("type")
 	subfolder := c.Query("subfolder")
 
@@ -81,8 +81,8 @@ func rewriteViewRequest(c *gin.Context, prefix string) {
 	// temp 类型不限制
 }
 
-// rewritePromptBody 改写 /prompt 请求体中 SaveImage 等节点的 filename_prefix
-func rewritePromptBody(c *gin.Context, prefix string) {
+// RewritePromptBody 改写 /prompt 请求体中 SaveImage 等节点的 filename_prefix（导出供 main 直接调用）
+func RewritePromptBody(c *gin.Context, prefix string) {
 	bodyBytes, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		return
@@ -149,8 +149,8 @@ func rewritePromptNodes(prompt map[string]interface{}, prefix string) bool {
 	return modified
 }
 
-// rewriteUploadRequest 改写上传请求，注入用户 subfolder
-func rewriteUploadRequest(c *gin.Context, prefix string) {
+// RewriteUploadRequest 改写上传请求，注入用户 subfolder（导出供 main 直接调用）
+func RewriteUploadRequest(c *gin.Context, prefix string) {
 	contentType := c.GetHeader("Content-Type")
 	mediaType, params, err := mime.ParseMediaType(contentType)
 	if err != nil || !strings.HasPrefix(mediaType, "multipart/") {

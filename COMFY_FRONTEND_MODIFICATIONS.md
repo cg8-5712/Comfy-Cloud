@@ -522,6 +522,7 @@ A:
 | 日期 | 版本 | 修改内容 | 修改人 |
 |------|------|----------|--------|
 | 2024-02-16 | 1.0.0 | 初始版本，添加 comfy-cloud distribution 支持 | Claude |
+| 2026-02-21 | 1.1.0 | 多用户隔离：后端自动注册、前端路由守卫、role 权限 | Claude |
 
 ---
 
@@ -531,3 +532,196 @@ A:
 - 项目 README
 - API 规范文档
 - 开发路线文档
+
+---
+
+## v1.1.0 新增修改（多用户隔离）
+
+### 3. ComfyUI 后端修改 (`comfy/`)
+
+#### 3.1 `app/user_manager.py`
+
+**修改位置**: `get_request_user_id` 方法内，`SYSTEM_USER_PREFIX` 检查之后、`if user not in self.users: raise KeyError` 之前。
+
+**目的**: `--multi-user` 模式下，Go 代理传来的 `Comfy-User` header 中的用户自动注册到 `users.json`，无需手动调 `POST /users`。
+
+**新增代码**:
+```python
+            # Auto-register proxy users (Comfy-Cloud integration)
+            if user and user not in self.users:
+                self.users[user] = user
+                try:
+                    with open(self.get_users_file(), "w") as f:
+                        json.dump(self.users, f)
+                except Exception as e:
+                    logging.warning(f"Failed to save users.json: {e}")
+```
+
+**前提条件**: ComfyUI 必须以 `--multi-user` 参数启动。
+
+---
+
+### 4. ComfyUI 前端新增修改 (`comfy-frontend/`)
+
+#### 4.1 `src/types/comfyCloudTypes.ts`
+
+**改动**: `ComfyCloudUser` 接口新增 `role` 字段。
+
+```typescript
+export interface ComfyCloudUser {
+  id: number
+  username: string
+  email: string
+  role: string          // ← v1.1.0 新增
+  tier: SubscriptionTier
+  // ...其余不变
+}
+```
+
+---
+
+#### 4.2 `src/stores/comfyCloudAuthStore.ts`
+
+**改动 1**: 顶部新增 import
+
+```typescript
+import { api } from '@/scripts/api'
+```
+
+**改动 2**: computed 区域新增 `isAdmin`
+
+```typescript
+const isAdmin = computed(() => currentUser.value?.role === 'admin')
+```
+
+**改动 3**: watch token 回调中，`fetchUserInfo()` 成功后设置 ComfyUI 用户身份
+
+```typescript
+await fetchUserInfo()
+// Set ComfyUI user identity (proxy also overrides this header)
+if (currentUser.value?.id) {
+  api.user = `user_${currentUser.value.id}`
+}
+isInitialized.value = true
+```
+
+**改动 4**: return 对象中导出 `isAdmin`
+
+---
+
+#### 4.3 `src/router.ts`
+
+**改动 1**: GraphView 路由的 `beforeEnter`，`isComfyCloud` 时初始化 userStore 并自动登录，跳过用户选择界面。
+
+> 注意：不能跳过 `userStore.initialize()`，GraphView 内部组件依赖 `userStore.initialized` 为 `true` 才能渲染。
+
+```typescript
+beforeEnter: async (_to, _from, next) => {
+  const userStore = useUserStore()
+  await userStore.initialize()
+
+  // Comfy-Cloud: auto-login with proxy user identity, skip user selection
+  if (isComfyCloud) {
+    if (userStore.needsLogin) {
+      const { useComfyCloudAuthStore } = await import(
+        '@/stores/comfyCloudAuthStore'
+      )
+      const authStore = useComfyCloudAuthStore()
+      if (authStore.userId) {
+        const uid = `user_${authStore.userId}`
+        await userStore.login({ userId: uid, username: uid })
+      }
+    }
+    return next()
+  }
+
+  if (userStore.needsLogin) {
+    next('/user-select')
+  } else {
+    next()
+  }
+}
+```
+
+**改动 2**: user-select 路由新增 `beforeEnter`，等待 auth 初始化完成后检查权限，只有 admin 可访问，普通用户重定向回 `/`。
+
+```typescript
+{
+  path: 'user-select',
+  name: 'UserSelectView',
+  component: () => import('@/views/UserSelectView.vue'),
+  beforeEnter: async (_to, _from, next) => {
+    if (isComfyCloud) {
+      const { useComfyCloudAuthStore } =
+        await import('@/stores/comfyCloudAuthStore')
+      const authStore = useComfyCloudAuthStore()
+
+      // Wait for auth initialization
+      if (!authStore.isInitialized) {
+        const { storeToRefs } = await import('pinia')
+        const { until } = await import('@vueuse/core')
+        const { isInitialized } = storeToRefs(authStore)
+        await until(isInitialized).toBe(true, { timeout: 10_000 })
+      }
+
+      return authStore.isAdmin ? next() : next('/')
+    }
+    next()
+  }
+}
+```
+
+---
+
+#### 4.4 管理平台 URL 默认值修复
+
+三处引用 `VITE_ADMIN_URL` 的地方，默认值从硬编码域名统一改为 `window.location.origin`，确保跳转到当前访问的域名。
+
+**`src/components/user/ComfyCloudUserButton.vue`** (第 83-84 行)
+
+```typescript
+// 修改前
+const ADMIN_BASE_URL =
+  import.meta.env.VITE_ADMIN_URL || 'https://admin.your-domain.com'
+
+// 修改后
+const ADMIN_BASE_URL =
+  import.meta.env.VITE_ADMIN_URL || window.location.origin
+```
+
+**`src/router.ts`** (isComfyCloud 未认证重定向)
+
+```typescript
+// 修改前
+const adminUrl =
+  import.meta.env.VITE_ADMIN_URL || 'https://admin.your-domain.com'
+
+// 修改后
+const adminUrl =
+  import.meta.env.VITE_ADMIN_URL || window.location.origin
+```
+
+**`src/stores/comfyCloudAuthStore.ts`** (token 清除后跳转)
+
+```typescript
+// 修改前
+const adminUrl = import.meta.env.VITE_ADMIN_URL || ''
+
+// 修改后
+const adminUrl =
+  import.meta.env.VITE_ADMIN_URL || window.location.origin
+```
+
+---
+
+### v1.1.0 代码审查检查清单
+
+- [ ] ComfyUI 以 `--multi-user` 启动
+- [ ] `user_manager.py` 包含自动注册逻辑
+- [ ] `comfyCloudTypes.ts` 的 `ComfyCloudUser` 包含 `role` 字段
+- [ ] `comfyCloudAuthStore.ts` 导出 `isAdmin`
+- [ ] `comfyCloudAuthStore.ts` 在 auth 初始化后设置 `api.user`
+- [ ] `router.ts` GraphView 初始化 userStore 并自动登录（不能跳过 initialize）
+- [ ] `router.ts` user-select 等待 auth 初始化后检查 admin 权限
+- [ ] Go 后端 `/api/user/info` 返回 `role` 字段
+- [ ] 三处 `VITE_ADMIN_URL` 默认值均为 `window.location.origin`

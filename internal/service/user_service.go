@@ -52,6 +52,7 @@ func (s *UserService) GetUserInfo(userID uint) (map[string]interface{}, error) {
 		"id":            user.ID,
 		"username":      user.Username,
 		"email":         user.Email,
+		"role":          user.Role,
 		"tier":          user.Tier,
 		"balance":       user.Balance,
 		"storage_used":  storageUsed,

@@ -51,6 +51,10 @@ func ComfyAuthMiddleware() gin.HandlerFunc {
 		c.Next()
 	}
 }
+func ExtractToken(c *gin.Context) string {
+	return extractToken(c)
+}
+
 func extractToken(c *gin.Context) string {
 	// 从 Authorization Header 提取
 	bearerToken := c.GetHeader("Authorization")
