@@ -116,17 +116,28 @@ func (h *ProxyHandler) proxyTo(c *gin.Context, instance *Instance) {
 	proxy := httputil.NewSingleHostReverseProxy(target)
 
 	// 自定义 Director（修改请求）
-	originalDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
-		originalDirector(req)
-		// 去掉 /comfy 前缀
+		req.URL.Scheme = target.Scheme
+		req.URL.Host = target.Host
+		req.Host = target.Host
+
+		// 去掉 /comfy 前缀，同时保留原始编码（%2F、%20 等）
+		// RawPath 保留编码字符，Path 是解码后的版本
+		// ComfyUI 的 userdata API 依赖 %2F 保持编码
+		rawPath := req.URL.RawPath
+		if rawPath == "" {
+			rawPath = req.URL.Path
+		}
+		rawPath = strings.TrimPrefix(rawPath, "/comfy")
+		if rawPath == "" {
+			rawPath = "/"
+		}
+		req.URL.RawPath = rawPath
 		req.URL.Path = strings.TrimPrefix(req.URL.Path, "/comfy")
 		if req.URL.Path == "" {
 			req.URL.Path = "/"
 		}
-		// 设置正确的 Host
-		req.Host = target.Host
-		// 添加自定义 header
+
 		req.Header.Set("X-Forwarded-Host", c.Request.Host)
 		req.Header.Set("X-Instance-ID", instance.ID)
 	}

@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -76,8 +77,7 @@ func main() {
 	adminRepo := repository.NewAdminRepository(database.DB)
 	configRepo := repository.NewConfigRepository(database.DB)
 
-	// 初始化 Service 层
-	authService := service.NewAuthService(userRepo, cfg)
+	// 初始化 Service 层（先初始化不依赖 configService 的服务）
 	userService := service.NewUserService(userRepo, usageRepo, database.DB)
 	subscriptionService := service.NewSubscriptionService(subscriptionRepo, userRepo, database.DB)
 	usageService := service.NewUsageService(usageRepo, database.DB)
@@ -91,6 +91,14 @@ func main() {
 	configService.StartAutoReload(30 * time.Second) // 每 30 秒重新加载配置
 	defer configService.Stop()
 	log.Println("Config service initialized with auto-reload")
+
+	// 初始化用户目录服务（依赖 configService）
+	userDataDir := configService.Get("storage", "user_data_dir")
+	userDirService := service.NewUserDirectoryService(userDataDir)
+	log.Printf("User directory service initialized (base: %s)", userDataDir)
+
+	// 初始化 AuthService（依赖 userDirService，注册时自动创建目录）
+	authService := service.NewAuthService(userRepo, cfg, userDirService)
 
 	// 初始化 ComfyUI 实例池（从数据库加载）
 	instanceService := service.NewInstanceService(database.DB, nil)
@@ -110,11 +118,6 @@ func main() {
 	// 初始化代理处理器
 	proxyHandler := proxy.NewProxyHandler(instancePool, database.DB)
 	log.Println("Proxy handler initialized")
-
-	// 初始化用户目录服务
-	userDataDir := configService.Get("storage", "user_data_dir")
-	userDirService := service.NewUserDirectoryService(userDataDir)
-	log.Printf("User directory service initialized (base: %s)", userDataDir)
 
 	// 初始化 Handler 层
 	authHandler := handler.NewAuthHandler(authService)
@@ -162,15 +165,25 @@ func main() {
 	settingsHandler.SetupRoutes(r, authMiddleware)
 	adminHandler.SetupRoutes(r, authMiddleware)
 
-	// 代理路由（所有 /comfy/* 请求）
-	// 静态资源不需要认证，API 请求需要认证
-	comfyGroup := r.Group("/comfy")
-	comfyGroup.Use(middleware.ComfyAuthMiddleware())
-	comfyGroup.Use(middleware.PathRewriteMiddleware())
-	{
-		comfyGroup.Any("/*path", proxyHandler.Route)
-		comfyGroup.Any("", proxyHandler.Route)
-	}
+	// ComfyUI 代理（用中间件拦截，绕过 Gin 路由匹配，避免编码路径/空格导致 405）
+	comfyAuth := middleware.ComfyAuthMiddleware()
+	comfyRewrite := middleware.PathRewriteMiddleware()
+	r.Use(func(c *gin.Context) {
+		if !strings.HasPrefix(c.Request.URL.Path, "/comfy") {
+			c.Next()
+			return
+		}
+		comfyAuth(c)
+		if c.IsAborted() {
+			return
+		}
+		comfyRewrite(c)
+		if c.IsAborted() {
+			return
+		}
+		proxyHandler.Route(c)
+		c.Abort()
+	})
 
 	// 用户目录管理接口
 	r.POST("/api/user/init-directory", middleware.AuthMiddleware(), func(c *gin.Context) {

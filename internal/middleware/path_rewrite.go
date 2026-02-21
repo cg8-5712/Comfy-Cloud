@@ -5,15 +5,29 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
+	"mime/multipart"
+	"net/textproto"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 )
 
+// userPrefix returns the per-user directory prefix, e.g. "user_123"
+func userPrefix(uid uint) string {
+	return fmt.Sprintf("user_%d", uid)
+}
+
 // PathRewriteMiddleware 路径重写中间件（用户数据隔离）
+//
+// 隔离策略：
+//   - 工作流/设置：通过 Comfy-User header，利用 ComfyUI 原生多用户支持
+//   - 生成图片：改写 SaveImage 节点的 filename_prefix，输出到 output/user_{id}/
+//   - 查看图片：校验 /view 请求的 subfolder 属于当前用户
+//   - 上传图片：注入 subfolder=user_{id}，上传到 input/user_{id}/
+//   - 模型：共享，不改写
 func PathRewriteMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// 获取用户 ID（从认证中间件注入）
 		userID, exists := c.Get("user_id")
 		if !exists {
 			c.Next()
@@ -21,146 +35,111 @@ func PathRewriteMiddleware() gin.HandlerFunc {
 		}
 
 		uid := userID.(uint)
+		prefix := userPrefix(uid)
 		path := c.Request.URL.Path
 
-		// 1. 重写 GET 请求路径（读取文件）
-		if c.Request.Method == "GET" {
-			if newPath := rewriteGetPath(path, uid); newPath != "" {
-				c.Request.URL.Path = newPath
-			}
+		// 1. 注入 Comfy-User header → ComfyUI 原生 userdata 隔离
+		c.Request.Header.Set("Comfy-User", prefix)
+
+		// 2. /view 请求：校验 subfolder 防止跨用户访问
+		if path == "/view" || path == "/comfy/view" {
+			rewriteViewRequest(c, prefix)
 		}
 
-		// 2. 重写 POST 请求中的路径（提交任务）
-		if c.Request.Method == "POST" {
-			if strings.Contains(path, "/prompt") || strings.Contains(path, "/upload") {
-				rewritePostBody(c, uid)
-			}
+		// 3. /prompt 请求：改写 SaveImage 节点的 filename_prefix
+		if c.Request.Method == "POST" && (path == "/prompt" || path == "/comfy/prompt") {
+			rewritePromptBody(c, prefix)
+		}
+
+		// 4. /upload/image 请求：注入 subfolder
+		if c.Request.Method == "POST" && (strings.HasSuffix(path, "/upload/image") || strings.HasSuffix(path, "/upload/mask")) {
+			rewriteUploadRequest(c, prefix)
 		}
 
 		c.Next()
 	}
 }
 
-// rewriteGetPath 重写 GET 请求路径
-func rewriteGetPath(path string, userID uint) string {
-	// /output/xxx → /users/{user_id}/output/xxx
-	if strings.HasPrefix(path, "/output/") {
-		return fmt.Sprintf("/users/%d/output/%s", userID, strings.TrimPrefix(path, "/output/"))
-	}
+// rewriteViewRequest 校验并改写 /view 请求的 subfolder
+func rewriteViewRequest(c *gin.Context, prefix string) {
+	viewType := c.Query("type")
+	subfolder := c.Query("subfolder")
 
-	// /view → /users/{user_id}/output/xxx (ComfyUI 的图片查看接口)
-	if strings.HasPrefix(path, "/view") {
-		// 保持原路径，但在查询参数中添加用户前缀
-		// 实际处理在 ComfyUI 端或通过 volume 映射
-		return ""
-	}
-
-	// /workflows/xxx → /users/{user_id}/workflows/xxx
-	if strings.HasPrefix(path, "/workflows/") {
-		return fmt.Sprintf("/users/%d/workflows/%s", userID, strings.TrimPrefix(path, "/workflows/"))
-	}
-
-	// /models/xxx → 需要检查是否是私有模型
-	if strings.HasPrefix(path, "/models/") {
-		modelPath := strings.TrimPrefix(path, "/models/")
-		// 如果是 user_xxx 开头，说明是私有模型
-		if strings.HasPrefix(modelPath, fmt.Sprintf("user_%d/", userID)) {
-			return fmt.Sprintf("/users/%d/models/%s", userID, strings.TrimPrefix(modelPath, fmt.Sprintf("user_%d/", userID)))
+	// output 和 input 类型需要隔离
+	if viewType == "output" || viewType == "input" {
+		// 强制 subfolder 以 user_{id} 开头
+		if !strings.HasPrefix(subfolder, prefix) {
+			q := c.Request.URL.Query()
+			if subfolder == "" {
+				q.Set("subfolder", prefix)
+			} else {
+				q.Set("subfolder", prefix+"/"+subfolder)
+			}
+			c.Request.URL.RawQuery = q.Encode()
 		}
-		// 否则是共享模型，不重写
-		return ""
 	}
-
-	return ""
+	// temp 类型不限制
 }
 
-// rewritePostBody 重写 POST 请求体中的路径
-func rewritePostBody(c *gin.Context, userID uint) {
-	// 读取原始请求体
+// rewritePromptBody 改写 /prompt 请求体中 SaveImage 等节点的 filename_prefix
+func rewritePromptBody(c *gin.Context, prefix string) {
 	bodyBytes, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		return
 	}
-	defer c.Request.Body.Close()
+	c.Request.Body.Close()
 
-	// 尝试解析为 JSON
 	var data map[string]interface{}
 	if err := json.Unmarshal(bodyBytes, &data); err != nil {
-		// 不是 JSON，恢复原始 body
 		c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 		return
 	}
 
-	// 重写路径字段
 	modified := false
-
-	// 处理 prompt 请求（ComfyUI workflow）
 	if prompt, ok := data["prompt"].(map[string]interface{}); ok {
-		if rewriteWorkflowPaths(prompt, userID) {
-			modified = true
-		}
+		modified = rewritePromptNodes(prompt, prefix)
 	}
 
-	// 处理 output_path 字段
-	if outputPath, ok := data["output_path"].(string); ok {
-		data["output_path"] = fmt.Sprintf("users/%d/output/%s", userID, outputPath)
-		modified = true
-	}
-
-	// 处理 filename 字段
-	if filename, ok := data["filename"].(string); ok {
-		if !strings.HasPrefix(filename, fmt.Sprintf("users/%d/", userID)) {
-			data["filename"] = fmt.Sprintf("users/%d/workflows/%s", userID, filename)
-			modified = true
-		}
-	}
-
-	// 如果修改了，重新序列化
 	if modified {
 		newBody, err := json.Marshal(data)
 		if err == nil {
 			c.Request.Body = io.NopCloser(bytes.NewBuffer(newBody))
 			c.Request.ContentLength = int64(len(newBody))
+			return
 		}
-	} else {
-		// 恢复原始 body
-		c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 	}
+	c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 }
 
-// rewriteWorkflowPaths 重写 workflow JSON 中的路径
-func rewriteWorkflowPaths(workflow map[string]interface{}, userID uint) bool {
+// rewritePromptNodes 遍历 workflow 节点，改写输出路径
+func rewritePromptNodes(prompt map[string]interface{}, prefix string) bool {
 	modified := false
 
-	// 遍历 workflow 的所有节点
-	for _, nodeData := range workflow {
+	// 需要改写 filename_prefix 的节点类型
+	outputNodeTypes := map[string]bool{
+		"SaveImage":        true,
+		"SaveAnimatedWEBP": true,
+		"SaveAnimatedPNG":  true,
+		"SaveLatent":       true,
+	}
+
+	for _, nodeData := range prompt {
 		node, ok := nodeData.(map[string]interface{})
 		if !ok {
 			continue
 		}
 
-		// 获取 inputs
+		classType, _ := node["class_type"].(string)
 		inputs, ok := node["inputs"].(map[string]interface{})
 		if !ok {
 			continue
 		}
 
-		// 重写常见的路径字段
-		pathFields := []string{
-			"image",           // LoadImage 节点
-			"filename_prefix", // SaveImage 节点
-			"output_path",     // 自定义输出路径
-			"input_path",      // 自定义输入路径
-			"model",           // 模型路径（可能需要重写）
-			"lora_name",       // LoRA 名称
-			"vae_name",        // VAE 名称
-		}
-
-		for _, field := range pathFields {
-			if value, ok := inputs[field].(string); ok {
-				// 检查是否需要重写
-				if newValue := rewriteFieldPath(field, value, userID); newValue != value {
-					inputs[field] = newValue
+		// 改写输出节点的 filename_prefix
+		if outputNodeTypes[classType] {
+			if fp, ok := inputs["filename_prefix"].(string); ok {
+				if !strings.HasPrefix(fp, prefix+"/") {
+					inputs["filename_prefix"] = prefix + "/" + fp
 					modified = true
 				}
 			}
@@ -170,114 +149,70 @@ func rewriteWorkflowPaths(workflow map[string]interface{}, userID uint) bool {
 	return modified
 }
 
-// rewriteFieldPath 重写特定字段的路径
-func rewriteFieldPath(field, value string, userID uint) string {
-	switch field {
-	case "filename_prefix":
-		// SaveImage 的输出前缀
-		// "myimage" → "users/123/output/myimage"
-		if !strings.HasPrefix(value, fmt.Sprintf("users/%d/", userID)) {
-			return fmt.Sprintf("users/%d/output/%s", userID, value)
-		}
-
-	case "image":
-		// LoadImage 的输入图片
-		// "input.png" → "users/123/uploads/input.png"
-		if !strings.HasPrefix(value, fmt.Sprintf("users/%d/", userID)) && !strings.HasPrefix(value, "users/") {
-			return fmt.Sprintf("users/%d/uploads/%s", userID, value)
-		}
-
-	case "model", "lora_name", "vae_name":
-		// 模型路径
-		// 如果是 user_123/xxx，重写为 users/123/models/xxx
-		if strings.HasPrefix(value, fmt.Sprintf("user_%d/", userID)) {
-			return fmt.Sprintf("users/%d/models/%s", userID, strings.TrimPrefix(value, fmt.Sprintf("user_%d/", userID)))
-		}
-		// 否则是共享模型，不重写
+// rewriteUploadRequest 改写上传请求，注入用户 subfolder
+func rewriteUploadRequest(c *gin.Context, prefix string) {
+	contentType := c.GetHeader("Content-Type")
+	mediaType, params, err := mime.ParseMediaType(contentType)
+	if err != nil || !strings.HasPrefix(mediaType, "multipart/") {
+		return
 	}
 
-	return value
-}
-
-// ResponseRewriteMiddleware 重写响应中的路径（可选）
-func ResponseRewriteMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		// 获取用户 ID
-		userID, exists := c.Get("user_id")
-		if !exists {
-			c.Next()
-			return
-		}
-
-		uid := userID.(uint)
-
-		// 创建自定义 ResponseWriter 来拦截响应
-		blw := &bodyLogWriter{body: bytes.NewBufferString(""), ResponseWriter: c.Writer}
-		c.Writer = blw
-
-		c.Next()
-
-		// 如果是 JSON 响应，重写路径
-		if strings.Contains(c.Writer.Header().Get("Content-Type"), "application/json") {
-			var data interface{}
-			if err := json.Unmarshal(blw.body.Bytes(), &data); err == nil {
-				if rewriteResponsePaths(data, uid) {
-					newBody, _ := json.Marshal(data)
-					c.Writer.Header().Set("Content-Length", fmt.Sprintf("%d", len(newBody)))
-					c.Writer.Write(newBody)
-					return
-				}
-			}
-		}
-
-		// 否则直接返回原始响应
-		c.Writer.Write(blw.body.Bytes())
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		return
 	}
-}
+	c.Request.Body.Close()
 
-// bodyLogWriter 用于拦截响应体
-type bodyLogWriter struct {
-	gin.ResponseWriter
-	body *bytes.Buffer
-}
+	reader := multipart.NewReader(bytes.NewReader(body), params["boundary"])
 
-func (w bodyLogWriter) Write(b []byte) (int, error) {
-	w.body.Write(b)
-	return len(b), nil
-}
+	// 重建 multipart body，注入/覆盖 subfolder 字段
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
 
-// rewriteResponsePaths 重写响应中的路径（将内部路径转换为用户可见路径）
-func rewriteResponsePaths(data interface{}, userID uint) bool {
-	modified := false
-	userPrefix := fmt.Sprintf("users/%d/", userID)
-
-	switch v := data.(type) {
-	case map[string]interface{}:
-		for key, value := range v {
-			// 递归处理
-			if rewriteResponsePaths(value, userID) {
-				modified = true
-			}
-
-			// 重写路径字段
-			if str, ok := value.(string); ok {
-				if strings.HasPrefix(str, userPrefix+"output/") {
-					v[key] = strings.TrimPrefix(str, userPrefix+"output/")
-					modified = true
-				} else if strings.HasPrefix(str, userPrefix+"workflows/") {
-					v[key] = strings.TrimPrefix(str, userPrefix+"workflows/")
-					modified = true
-				}
-			}
+	hasSubfolder := false
+	for {
+		part, err := reader.NextPart()
+		if err != nil {
+			break
 		}
 
-	case []interface{}:
-		for _, item := range v {
-			if rewriteResponsePaths(item, userID) {
-				modified = true
+		fieldName := part.FormName()
+		partBody, _ := io.ReadAll(part)
+
+		if fieldName == "subfolder" {
+			// 覆盖 subfolder：加上用户前缀
+			original := strings.TrimSpace(string(partBody))
+			var newVal string
+			if original == "" {
+				newVal = prefix
+			} else {
+				newVal = prefix + "/" + original
 			}
+			writeFormField(writer, "subfolder", newVal)
+			hasSubfolder = true
+		} else if part.FileName() != "" {
+			// 文件字段
+			pw, _ := writer.CreatePart(part.Header)
+			pw.Write(partBody)
+		} else {
+			writeFormField(writer, fieldName, string(partBody))
 		}
 	}
 
-	return modified
+	if !hasSubfolder {
+		writeFormField(writer, "subfolder", prefix)
+	}
+
+	writer.Close()
+
+	c.Request.Body = io.NopCloser(&buf)
+	c.Request.ContentLength = int64(buf.Len())
+	c.Request.Header.Set("Content-Type", writer.FormDataContentType())
+}
+
+func writeFormField(w *multipart.Writer, fieldName, value string) {
+	h := make(textproto.MIMEHeader)
+	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"`, fieldName))
+	p, _ := w.CreatePart(h)
+	p.Write([]byte(value))
 }
